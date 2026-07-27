@@ -29,7 +29,6 @@ For sync log storage, add MongoDB in `backend/.env`:
 
 ```bash
 MONGODB_URI=mongodb+srv://<user>:<password>@<cluster>/<db>?retryWrites=true&w=majority
-MONGODB_DB=gatp_demo
 ```
 
 ## Run
@@ -71,7 +70,6 @@ The backend stores sync/export/QuickBooks status entries in MongoDB and the fron
 XOLA_API_KEY=your_key
 XOLA_BASE=https://xola.com/api
 MONGODB_URI=mongodb+srv://...
-MONGODB_DB=gatp_demo
 
 # Optional — post to a Slack channel on every sync
 SLACK_BOT_TOKEN=xoxb-...

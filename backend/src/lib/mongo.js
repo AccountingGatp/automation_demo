@@ -14,11 +14,7 @@ async function connectMongo() {
   }
 
   if (!connectPromise) {
-    connectPromise = mongoose
-      .connect(uri, {
-        dbName: process.env.MONGODB_DB || undefined,
-      })
-      .then(() => {
+    connectPromise = mongoose.connect(uri).then(() => {
         console.log('[mongo] connected');
         return mongoose.connection;
       })
