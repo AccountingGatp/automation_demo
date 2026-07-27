@@ -25,6 +25,13 @@ cd backend && npm install
 cd ../frontend && npm install
 ```
 
+For sync log storage, add MongoDB in `backend/.env`:
+
+```bash
+MONGODB_URI=mongodb+srv://<user>:<password>@<cluster>/<db>?retryWrites=true&w=majority
+MONGODB_DB=gatp_demo
+```
+
 ## Run
 
 Start the API (port **5000**):
@@ -50,11 +57,21 @@ npm run dev:frontend
 
 The workbook is parsed in memory only — nothing is written to disk.
 
+### Sync logs
+
+The backend stores sync/export/QuickBooks status entries in MongoDB and the frontend exposes them at `/logs`.
+
+- Success and failure events are saved automatically.
+- The logs page highlights recent updates and failures.
+- If `MONGODB_URI` is missing, the app still runs but log storage is disabled.
+
 ### Env (`backend/.env`)
 
 ```
 XOLA_API_KEY=your_key
 XOLA_BASE=https://xola.com/api
+MONGODB_URI=mongodb+srv://...
+MONGODB_DB=gatp_demo
 
 # Optional — post to a Slack channel on every sync
 SLACK_BOT_TOKEN=xoxb-...

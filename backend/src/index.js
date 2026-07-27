@@ -2,6 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const apiRoutes = require('./routes');
+const { connectMongo } = require('./lib/mongo');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -21,6 +22,10 @@ app.use((_req, res) => {
 app.use((err, _req, res, _next) => {
   console.error(err);
   res.status(500).json({ error: 'Internal server error' });
+});
+
+connectMongo().catch(() => {
+  // The API can still run without Mongo; log storage will be disabled.
 });
 
 const server = app.listen(PORT, () => {
