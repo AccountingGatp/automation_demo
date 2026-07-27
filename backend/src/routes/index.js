@@ -108,7 +108,7 @@ router.post('/reports/export', async (req, res) => {
       );
     }
 
-    createSyncLog({
+    await createSyncLog({
       event: 'export',
       status: 'success',
       flow: flow || 'export',
@@ -159,7 +159,7 @@ router.post('/reports/export', async (req, res) => {
         flow: flow || 'export',
       })
     );
-    createSyncLog({
+    await createSyncLog({
       event: 'export',
       status: 'failed',
       flow: flow || 'export',
@@ -190,7 +190,7 @@ router.post('/quickbooks/import', async (req, res) => {
     }
 
     const result = await importToQuickBooks({ sheets, meta: meta || {} });
-    createSyncLog({
+    await createSyncLog({
       event: 'quickbooks',
       status: 'success',
       flow: meta?.flow || 'quickbooks',
@@ -231,7 +231,7 @@ router.post('/quickbooks/import', async (req, res) => {
         error: err.message || 'QuickBooks import failed',
       })
     );
-    createSyncLog({
+    await createSyncLog({
       event: 'quickbooks',
       status: 'failed',
       flow: req.body?.meta?.flow || 'quickbooks',

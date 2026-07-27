@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
-import { API_URL } from "../../lib/api";
+import { useEffect, useState } from "react";
+import { getApiUrl } from "../../lib/api";
 
 type LogItem = {
   _id: string;
@@ -32,10 +32,23 @@ type LogItem = {
   createdAt: string;
 };
 
+type Counts = {
+  total: number;
+  success: number;
+  failed: number;
+};
+
 function tone(status: LogItem["status"]) {
   if (status === "failed") return "border-red-200 bg-red-50 text-red-700";
   if (status === "warning") return "border-amber-200 bg-amber-50 text-amber-700";
-  return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  if (status === "success") return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  return "border-zinc-200 bg-zinc-50 text-zinc-600";
+}
+
+function cardTone(status: LogItem["status"]) {
+  if (status === "failed") return "border-red-200 bg-red-50/60";
+  if (status === "success") return "border-emerald-200 bg-emerald-50/60";
+  return "border-zinc-200 bg-zinc-50";
 }
 
 function formatWhen(value: string) {
@@ -46,23 +59,31 @@ function formatWhen(value: string) {
 
 export default function LogsPage() {
   const [logs, setLogs] = useState<LogItem[]>([]);
+  const [counts, setCounts] = useState<Counts>({ total: 0, success: 0, failed: 0 });
   const [statusFilter, setStatusFilter] = useState<"all" | "success" | "failed">("all");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [mongoReady, setMongoReady] = useState(true);
+  const [apiBase, setApiBase] = useState("");
+
+  async function fetchLogs(filter: "all" | "success" | "failed") {
+    const query =
+      filter === "all" ? "?limit=100" : `?status=${filter}&limit=100`;
+    const res = await fetch(`${getApiUrl()}/api/logs${query}`, {
+      cache: "no-store",
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Failed to load logs");
+    return data;
+  }
 
   async function loadLogs() {
     setLoading(true);
     setError(null);
     try {
-      const query =
-        statusFilter === "all" ? "?limit=100" : `?status=${statusFilter}&limit=100`;
-      const res = await fetch(`${API_URL}/api/logs${query}`, {
-        cache: "no-store",
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to load logs");
+      const data = await fetchLogs(statusFilter);
       setLogs(data.data || []);
+      setCounts(data.counts || { total: 0, success: 0, failed: 0 });
       setMongoReady(Boolean(data.mongoReady));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load logs");
@@ -72,21 +93,20 @@ export default function LogsPage() {
   }
 
   useEffect(() => {
+    setApiBase(getApiUrl());
+  }, []);
+
+  useEffect(() => {
     let cancelled = false;
 
     async function run() {
       setLoading(true);
       setError(null);
       try {
-        const query =
-          statusFilter === "all" ? "?limit=100" : `?status=${statusFilter}&limit=100`;
-        const res = await fetch(`${API_URL}/api/logs${query}`, {
-          cache: "no-store",
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || "Failed to load logs");
+        const data = await fetchLogs(statusFilter);
         if (cancelled) return;
         setLogs(data.data || []);
+        setCounts(data.counts || { total: 0, success: 0, failed: 0 });
         setMongoReady(Boolean(data.mongoReady));
       } catch (err) {
         if (!cancelled) {
@@ -105,12 +125,8 @@ export default function LogsPage() {
     };
   }, [statusFilter]);
 
-  const failedCount = useMemo(
-    () => logs.filter((log) => log.status === "failed").length,
-    [logs]
-  );
-
   const latest = logs[0];
+  const latestSuccess = logs.find((log) => log.status === "success");
 
   return (
     <main className="min-h-full bg-zinc-50 text-zinc-900">
@@ -124,9 +140,13 @@ export default function LogsPage() {
               Sync logs
             </h1>
             <p className="mt-2 max-w-3xl text-zinc-600">
-              Review the latest sync activity, see what failed, and track the most
-              recent updates stored in MongoDB.
+              Success and failure events from every export and automate run.
             </p>
+            {apiBase && (
+              <p className="mt-2 text-xs text-zinc-500">
+                API: <span className="font-mono">{apiBase}</span>
+              </p>
+            )}
           </div>
           <div className="flex flex-wrap gap-3">
             <button
@@ -147,7 +167,16 @@ export default function LogsPage() {
 
         {!mongoReady && (
           <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-            MongoDB is not connected. Set `MONGODB_URI` in the backend to start storing logs.
+            MongoDB is not connected on this API. Add{" "}
+            <code className="font-mono">MONGODB_URI</code> to Vercel env for production, or use
+            local backend on port 5000.
+          </div>
+        )}
+
+        {mongoReady && !loading && counts.total === 0 && (
+          <div className="rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-600">
+            No logs yet. Run <strong>Fetch report</strong> or <strong>Automate all</strong> —
+            both success and failure are saved here.
           </div>
         )}
 
@@ -157,7 +186,7 @@ export default function LogsPage() {
           </div>
         )}
 
-        <section className="grid gap-4 md:grid-cols-3">
+        <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <div className="rounded-xl border border-zinc-200 bg-white p-5 shadow-sm">
             <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
               Latest update
@@ -169,21 +198,32 @@ export default function LogsPage() {
               {latest ? formatWhen(latest.createdAt) : "Waiting for sync activity"}
             </p>
           </div>
-          <div className="rounded-xl border border-zinc-200 bg-white p-5 shadow-sm">
-            <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
-              Failures shown
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50/50 p-5 shadow-sm">
+            <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700/80">
+              Success
             </p>
-            <p className="mt-2 text-2xl font-semibold text-red-600">{failedCount}</p>
-            <p className="mt-1 text-xs text-zinc-500">
-              Failed sync, export, or QuickBooks events in this view
+            <p className="mt-2 text-2xl font-semibold text-emerald-700">{counts.success}</p>
+            <p className="mt-1 text-xs text-emerald-800/70">
+              {latestSuccess
+                ? `Last: ${latestSuccess.message}`
+                : "Successful exports and syncs"}
+            </p>
+          </div>
+          <div className="rounded-xl border border-red-200 bg-red-50/50 p-5 shadow-sm">
+            <p className="text-xs font-semibold uppercase tracking-wide text-red-700/80">
+              Failed
+            </p>
+            <p className="mt-2 text-2xl font-semibold text-red-600">{counts.failed}</p>
+            <p className="mt-1 text-xs text-red-700/70">
+              Failed sync, export, or QuickBooks events
             </p>
           </div>
           <div className="rounded-xl border border-zinc-200 bg-white p-5 shadow-sm">
             <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
-              Entries loaded
+              Total entries
             </p>
-            <p className="mt-2 text-2xl font-semibold text-zinc-900">{logs.length}</p>
-            <p className="mt-1 text-xs text-zinc-500">Latest 100 records max</p>
+            <p className="mt-2 text-2xl font-semibold text-zinc-900">{counts.total}</p>
+            <p className="mt-1 text-xs text-zinc-500">All success + failure logs</p>
           </div>
         </section>
 
@@ -192,7 +232,7 @@ export default function LogsPage() {
             <div>
               <h2 className="text-lg font-semibold text-zinc-900">Recent activity</h2>
               <p className="mt-1 text-sm text-zinc-500">
-                Filter by status to focus on healthy runs or failures.
+                Showing success and failed runs. Use the filters to narrow the list.
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -207,7 +247,11 @@ export default function LogsPage() {
                       : "border border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50"
                   }`}
                 >
-                  {value === "all" ? "All" : value === "success" ? "Success" : "Failed"}
+                  {value === "all"
+                    ? `All (${counts.total})`
+                    : value === "success"
+                      ? `Success (${counts.success})`
+                      : `Failed (${counts.failed})`}
                 </button>
               ))}
             </div>
@@ -220,79 +264,107 @@ export default function LogsPage() {
               </div>
             ) : logs.length === 0 ? (
               <div className="rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-6 text-sm text-zinc-600">
-                No logs found for this filter.
+                No {statusFilter === "all" ? "" : `${statusFilter} `}logs found.
               </div>
             ) : (
-              logs.map((log) => (
-                <article
-                  key={log._id}
-                  className="rounded-xl border border-zinc-200 bg-zinc-50 p-4"
-                >
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                    <div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span
-                          className={`rounded-full border px-2.5 py-1 text-xs font-semibold uppercase tracking-wide ${tone(
-                            log.status
-                          )}`}
-                        >
-                          {log.status}
-                        </span>
-                        <span className="text-xs font-medium uppercase tracking-wide text-zinc-500">
-                          {log.event}
-                        </span>
-                        {log.flow && (
-                          <span className="text-xs text-zinc-400">{log.flow}</span>
+              logs.map((log) => {
+                const sellerLabel = log.seller?.name || log.seller?.id;
+                const reportLines = [
+                  log.report?.type ? { label: "Type", value: log.report.type } : null,
+                  log.report?.from || log.report?.to
+                    ? {
+                        label: "Range",
+                        value: `${log.report?.from || "?"} to ${log.report?.to || "?"}`,
+                      }
+                    : null,
+                  log.report?.rowCount != null
+                    ? { label: "Rows", value: String(log.report.rowCount) }
+                    : null,
+                ].filter(Boolean) as { label: string; value: string }[];
+
+                const qbLines = [
+                  log.quickbooks?.status
+                    ? { label: "QuickBooks", value: log.quickbooks.status }
+                    : null,
+                  log.quickbooks?.journalId
+                    ? { label: "Journal ID", value: log.quickbooks.journalId }
+                    : null,
+                  log.quickbooks?.lineCount != null
+                    ? { label: "Lines", value: String(log.quickbooks.lineCount) }
+                    : null,
+                ].filter(Boolean) as { label: string; value: string }[];
+
+                return (
+                  <article
+                    key={log._id}
+                    className={`rounded-xl border p-4 ${cardTone(log.status)}`}
+                  >
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span
+                            className={`rounded-full border px-2.5 py-1 text-xs font-semibold uppercase tracking-wide ${tone(
+                              log.status
+                            )}`}
+                          >
+                            {log.status}
+                          </span>
+                          <span className="text-xs font-medium uppercase tracking-wide text-zinc-500">
+                            {log.event}
+                          </span>
+                          {log.flow && (
+                            <span className="text-xs text-zinc-400">{log.flow}</span>
+                          )}
+                        </div>
+                        <h3 className="mt-2 text-base font-semibold text-zinc-900">
+                          {log.message}
+                        </h3>
+                        {sellerLabel && (
+                          <p className="mt-1 text-sm text-zinc-600">{sellerLabel}</p>
                         )}
                       </div>
-                      <h3 className="mt-2 text-base font-semibold text-zinc-900">
-                        {log.message}
-                      </h3>
-                      <p className="mt-1 text-sm text-zinc-600">
-                        {log.seller?.name || log.seller?.id || "Unknown seller"}
-                      </p>
+                      <p className="text-xs text-zinc-500">{formatWhen(log.createdAt)}</p>
                     </div>
-                    <p className="text-xs text-zinc-500">{formatWhen(log.createdAt)}</p>
-                  </div>
 
-                  <div className="mt-4 grid gap-3 md:grid-cols-2">
-                    <div className="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-700">
-                      <p>
-                        <span className="font-medium">Type:</span>{" "}
-                        {log.report?.type || "—"}
-                      </p>
-                      <p>
-                        <span className="font-medium">Range:</span>{" "}
-                        {log.report?.from || "—"} to {log.report?.to || "—"}
-                      </p>
-                      <p>
-                        <span className="font-medium">Rows:</span>{" "}
-                        {log.report?.rowCount ?? "—"}
-                      </p>
-                    </div>
-                    <div className="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-700">
-                      <p>
-                        <span className="font-medium">QuickBooks:</span>{" "}
-                        {log.quickbooks?.status || "—"}
-                      </p>
-                      <p>
-                        <span className="font-medium">Journal ID:</span>{" "}
-                        {log.quickbooks?.journalId || "—"}
-                      </p>
-                      <p>
-                        <span className="font-medium">Lines:</span>{" "}
-                        {log.quickbooks?.lineCount ?? "—"}
-                      </p>
-                    </div>
-                  </div>
+                    {(reportLines.length > 0 || qbLines.length > 0) && (
+                      <div
+                        className={`mt-4 grid gap-3 ${
+                          reportLines.length > 0 && qbLines.length > 0
+                            ? "md:grid-cols-2"
+                            : ""
+                        }`}
+                      >
+                        {reportLines.length > 0 && (
+                          <div className="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-700">
+                            {reportLines.map((line) => (
+                              <p key={line.label}>
+                                <span className="font-medium">{line.label}:</span>{" "}
+                                {line.value}
+                              </p>
+                            ))}
+                          </div>
+                        )}
+                        {qbLines.length > 0 && (
+                          <div className="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-700">
+                            {qbLines.map((line) => (
+                              <p key={line.label}>
+                                <span className="font-medium">{line.label}:</span>{" "}
+                                {line.value}
+                              </p>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
 
-                  {log.error?.message && (
-                    <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-                      {log.error.message}
-                    </div>
-                  )}
-                </article>
-              ))
+                    {log.error?.message && (
+                      <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                        {log.error.message}
+                      </div>
+                    )}
+                  </article>
+                );
+              })
             )}
           </div>
         </section>

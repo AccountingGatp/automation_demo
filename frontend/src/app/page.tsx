@@ -15,11 +15,11 @@ import {
   buildDummyQuickBooksImport,
   sleep,
 } from "../lib/dummyQuickBooks";
-import { API_URL } from "../lib/api";
+import { getApiUrl } from "../lib/api";
 
 async function notifySlackSync(payload: Record<string, unknown>) {
   try {
-    await fetch(`${API_URL}/api/slack/notify`, {
+    await fetch(`${getApiUrl()}/api/slack/notify`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
@@ -151,7 +151,7 @@ export default function Home() {
       setSellersLoading(true);
       setOverlayComplete(false);
       try {
-        const res = await fetch(`${API_URL}/api/delegators`);
+        const res = await fetch(`${getApiUrl()}/api/delegators`);
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "Failed to load sellers");
         setSellers(data.data || []);
@@ -199,7 +199,7 @@ export default function Home() {
       try {
         const sellerName =
           sellers.find((s) => s.id === seller)?.name || seller;
-        const res = await fetch(`${API_URL}/api/reports/export`, {
+        const res = await fetch(`${getApiUrl()}/api/reports/export`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -335,7 +335,7 @@ export default function Home() {
       }
       setAutoStepIndex(EXPORT_STEPS.length - 2); // Waiting for workbook
 
-      const res = await fetch(`${API_URL}/api/reports/export`, {
+      const res = await fetch(`${getApiUrl()}/api/reports/export`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
