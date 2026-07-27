@@ -1,8 +1,14 @@
-const { isMongoReady } = require('../lib/mongo');
+const { connectMongo, isMongoReady } = require('../lib/mongo');
 const SyncLog = require('../models/SyncLog');
 
+async function ensureMongo() {
+  await connectMongo();
+  return isMongoReady();
+}
+
 async function createSyncLog(entry) {
-  if (!isMongoReady()) {
+  const ready = await ensureMongo();
+  if (!ready) {
     return { skipped: true };
   }
 
@@ -16,8 +22,14 @@ async function createSyncLog(entry) {
 }
 
 async function listSyncLogs({ status, event, limit = 50 } = {}) {
-  if (!isMongoReady()) {
-    return { data: [], mongoReady: false };
+  const ready = await ensureMongo();
+  if (!ready) {
+    return {
+      data: [],
+      mongoReady: false,
+      message:
+        'MongoDB is not connected. Set MONGODB_URI on the backend (Vercel env for production).',
+    };
   }
 
   const query = {};
